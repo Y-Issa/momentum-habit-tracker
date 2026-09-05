@@ -1,69 +1,118 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
+import { useMemo } from "react";
+import { Sparkles, Flame } from "lucide-react";
+import { useHabits, useLogsByHabit, useSettings } from "@/hooks/useHabitData";
+import { isDueToday, computeStreak } from "@/lib/streak";
+import { todayKey } from "@/lib/date";
+import HabitCard from "@/components/habits/HabitCard";
+import ProgressRing from "@/components/common/ProgressRing";
+import EmptyState from "@/components/common/EmptyState";
+import { useUIStore } from "@/lib/store";
+
+export default function TodayPage() {
+  const habits = useHabits();
+  const logsByHabit = useLogsByHabit();
+  const settings = useSettings();
+  const openCreateHabit = useUIStore((s) => s.openCreateHabit);
+  const date = todayKey();
+
+  const today = new Date();
+  const dateLabel = new Intl.DateTimeFormat(undefined, {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+  }).format(today);
+
+  const dueHabits = useMemo(
+    () => habits.filter((h) => isDueToday(h, today)).sort((a, b) => a.order - b.order),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [habits]
+  );
+
+  const { doneCount, totalCount, bestStreak } = useMemo(() => {
+    let done = 0;
+    let best = 0;
+    for (const h of dueHabits) {
+      const logs = logsByHabit.get(h.id) ?? [];
+      const log = logs.find((l) => l.date === date);
+      if (log?.completed || log?.frozen) done++;
+      const { current } = computeStreak(h, logs, settings.weekStartsOn, today);
+      best = Math.max(best, current);
+    }
+    return { doneCount: done, totalCount: dueHabits.length, bestStreak: best };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dueHabits, logsByHabit, date, settings.weekStartsOn]);
+
+  const progress = totalCount === 0 ? 0 : Math.round((doneCount / totalCount) * 100);
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
+    <div className="space-y-6">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-sm text-text-faint">{dateLabel}</p>
+          <h1 className="text-2xl font-semibold tracking-tight">
+            {progress === 100 && totalCount > 0 ? "All done for today! 🎉" : "Today"}
           </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+
+        {habits.length > 0 && (
+          <div className="flex items-center gap-4 rounded-2xl border border-border bg-bg-elevated px-4 py-3">
+            <ProgressRing progress={progress} size={56} strokeWidth={6}>
+              <span className="text-xs font-bold tabular-nums">{progress}%</span>
+            </ProgressRing>
+            <div className="text-sm">
+              <p className="font-medium tabular-nums">
+                {doneCount} / {totalCount} habits
+              </p>
+              {bestStreak > 0 && (
+                <p className="flex items-center gap-1 text-xs text-text-faint">
+                  <Flame size={12} className="text-warning" aria-hidden="true" />
+                  Best streak today: {bestStreak}
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {habits.length === 0 ? (
+        <EmptyState
+          icon={<Sparkles size={26} aria-hidden="true" />}
+          title="No habits yet"
+          description="Create your first habit to start building a streak. Small, consistent steps compound into real change."
+          action={
+            <button
+              onClick={openCreateHabit}
+              className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-fg hover:bg-accent-hover"
+            >
+              Create your first habit
+            </button>
+          }
+        />
+      ) : dueHabits.length === 0 ? (
+        <EmptyState
+          icon={<Sparkles size={26} aria-hidden="true" />}
+          title="Nothing scheduled today"
+          description="Enjoy the rest of your day — your other habits will show up on their scheduled days."
+        />
+      ) : (
+        <div className="space-y-2">
+          {dueHabits.map((habit) => {
+            const logs = logsByHabit.get(habit.id) ?? [];
+            return (
+              <HabitCard
+                key={habit.id}
+                habit={habit}
+                todayLog={logs.find((l) => l.date === date)}
+                logs={logs}
+                weekStartsOn={settings.weekStartsOn}
+                date={date}
+              />
+            );
+          })}
         </div>
-      </main>
+      )}
     </div>
   );
 }
